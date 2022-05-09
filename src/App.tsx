@@ -25,7 +25,6 @@ function App() {
         canvasWidth / 2 - radius,
         canvasHeight - radius,
         radius,
-        radius,
         updateDisplayValues,
       );
       playerRef.current.draw();
@@ -45,9 +44,10 @@ function App() {
 
   function handleKeys(event: KeyboardEvent<HTMLDivElement>) {
     switch (event.key) {
+      case " ":
       case "w": {
-        if (caughtKeys.has("d")) playerRef.current.jump("right");
-        else if (caughtKeys.has("a")) playerRef.current.jump("left");
+        if (caughtKeys.has("d") || caughtKeys.has("ArrowRight")) playerRef.current.jump("right");
+        else if (caughtKeys.has("a") || caughtKeys.has("ArrowLeft")) playerRef.current.jump("left");
         else playerRef.current.jump();
         break;
       }

@@ -7,6 +7,20 @@ export class Vector {
     this.y = y;
   }
 
+  add(other: number | Vector, subtract?: boolean) {
+    if (typeof other === "number") {
+      other = subtract ? -1 * other : other;
+      return new Vector(this.x + other, this.y + other);
+    } else {
+      other = subtract ? other.times(-1) : other;
+      return new Vector(this.x + other.x, this.y + other.y);
+    }
+  }
+
+  minus(other: number | Vector) {
+    return this.add(other, true);
+  }
+
   times(other: number | Vector) {
     if (typeof other === "number") return new Vector(this.x * other, this.y * other);
     else return new Vector(this.x * other.x, this.y * other.y);
@@ -21,11 +35,10 @@ export default class Player {
   position: Vector;
   velocity = new Vector(0, 0);
   acceleration = new Vector(0, this.gravity);
-  width: number;
-  height: number;
+  radius: number;
   targetFps = 60;
   currentTimeStep = 1 / this.targetFps;
-  launchVelocity = new Vector(1, 5).times(this.physicsScaling);
+  launchVelocity = new Vector(2, 7).times(this.physicsScaling);
   initialPosition: Vector;
   onGround: boolean;
   initialVelocity = new Vector(0, 0);
@@ -36,14 +49,7 @@ export default class Player {
   private fps = 0;
   private animationFrameId = 0;
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    x?: number,
-    y?: number,
-    width?: number,
-    height?: number,
-    updateMotionValues?: Function,
-  ) {
+  constructor(canvas: HTMLCanvasElement, x: number, y: number, radius: number, updateMotionValues?: Function) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
     this.ctx.translate(0, this.canvas.height);
@@ -52,8 +58,7 @@ export default class Player {
     this.position = new Vector(x ?? 0, y ?? 0);
     this.onGround = false;
     this.initialPosition = this.position;
-    this.width = width ?? 10;
-    this.height = height ?? 10;
+    this.radius = radius;
     this.updateDisplayValues = updateMotionValues ?? (() => {});
 
     this.createUniformAccelMotion();
@@ -63,23 +68,39 @@ export default class Player {
     const dt = this.currentTimeStep;
     const a = this.acceleration;
     const vi = this.initialVelocity;
-    const di = this.initialPosition;
+    const si = this.initialPosition;
 
-    const v = new Vector(vi.x, vi.y + a.y * dt);
-    const d = new Vector(di.x + vi.x * dt, di.y + ((vi.y + v.y) * dt) / 2);
+    const v = this.velocity;
+    const s = this.position;
 
-    if (d.y <= 0) {
-      this.position = new Vector(d.x, 0);
+    const dv = a.times(dt).add(vi).minus(v);
+    const ds = a
+      .times((1 / 2) * dt ** 2)
+      .add(vi.times(dt))
+      .add(si)
+      .minus(s);
+
+    const vn = v.add(dv);
+    const sn = s.add(ds);
+
+    if (sn.y - this.radius < 0) {
+      // hit ground
+      this.position = new Vector(sn.x, this.radius);
+      this.velocity = this.velocity.times(0);
       this.onGround = true;
-    } else if (d.x <= 0) {
-      this.position = new Vector(0, d.y);
-      this.velocity = new Vector(-1 * v.x, v.y);
-    } else if (d.x >= this.canvas.width) {
-      this.position = new Vector(this.canvas.width, d.y);
-      this.velocity = new Vector(-1 * v.x, v.y);
+    } else if (sn.x - this.radius < 0) {
+      // hit left wall
+      this.position = new Vector(this.radius, sn.y);
+      this.initialPosition = new Vector(0 - (si.x - 2 * this.radius), si.y);
+      this.bounceOffWall(vn);
+    } else if (sn.x + this.radius > this.canvas.width) {
+      // hit right wall
+      this.position = new Vector(this.canvas.width - this.radius, sn.y);
+      this.initialPosition = new Vector(this.canvas.width + si.x + this.radius, si.y);
+      this.bounceOffWall(vn);
     } else {
-      this.position = d;
-      this.velocity = v;
+      this.position = sn;
+      this.velocity = vn;
       this.currentTimeStep += 1 / this.targetFps;
     }
 
@@ -94,9 +115,19 @@ export default class Player {
     this.lastCallTime = now;
     this.updateDisplayValues(this.position, this.velocity, this.acceleration, this.fps);
 
-    this.ctx.clearRect(0, 0, 800, 600);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    this.ctx.beginPath();
+    this.ctx.arc(this.position.x, this.position.y, this.radius, 0, 2 * Math.PI, true);
     this.ctx.fillStyle = "green";
-    this.ctx.fillRect(this.position.x, this.position.y, this.width, this.height);
+    this.ctx.fill();
+    this.ctx.closePath();
+
+    this.ctx.beginPath();
+    this.ctx.arc(this.position.x, this.position.y, 3, 0, 2 * Math.PI, true);
+    this.ctx.fillStyle = "black";
+    this.ctx.fill();
+    this.ctx.closePath();
 
     this.animationFrameId = window.requestAnimationFrame(() => this.draw());
   }
@@ -110,6 +141,12 @@ export default class Player {
     window.cancelAnimationFrame(this.animationFrameId);
     this.velocity = this.velocity.times(0);
     this.currentTimeStep = 1 / this.targetFps;
+  }
+
+  bounceOffWall(currentVelocity: Vector) {
+    this.velocity = new Vector(-currentVelocity.x, currentVelocity.y);
+    this.initialVelocity = new Vector(-this.initialVelocity.x, this.initialVelocity.y);
+    this.currentTimeStep += 1 / this.targetFps;
   }
 
   jump(direction?: "left" | "right") {
